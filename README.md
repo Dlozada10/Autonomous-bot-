@@ -77,10 +77,17 @@ hours, so today's uploads legitimately show nothing.
 python -m unittest discover -s tests -t .
 ```
 
-66 tests, ~10 seconds, no API keys or network required. Covers topic dedupe and
+79 tests, ~10 seconds, no API keys or network required. Covers topic dedupe and
 the similarity window, format/voice cooldown rotation, upload queueing and daily
 caps, word-timing maths, ASS subtitle structure, the quality floors, metrics
 snapshotting and aggregation, and a real end-to-end render probed with ffprobe.
+
+The Analytics integration is covered against a fake service: request shape,
+chunking across large channels, a failing chunk not aborting the rest, and
+response columns being mapped by name rather than position. That last one is
+mutation-checked — rewriting the mapping positionally makes the test fail with
+`subscribersGained` landing in the views column, which is exactly the bug it
+exists to catch.
 
 ## How it works
 
