@@ -49,6 +49,22 @@ CREATE TABLE IF NOT EXISTS uploads (
     created_at  REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS metrics (
+    video_id      INTEGER NOT NULL REFERENCES videos(id),
+    platform      TEXT NOT NULL,
+    day           TEXT NOT NULL,          -- YYYY-MM-DD the snapshot was taken
+    views         INTEGER,
+    watch_minutes REAL,
+    avg_view_pct  REAL,                   -- retention: the number that matters
+    avg_view_secs REAL,
+    likes         INTEGER,
+    comments      INTEGER,
+    shares        INTEGER,
+    subs_gained   INTEGER,
+    fetched_at    REAL NOT NULL,
+    PRIMARY KEY (video_id, platform, day)
+);
+
 CREATE INDEX IF NOT EXISTS idx_topics_seen ON topics(seen_at);
 CREATE INDEX IF NOT EXISTS idx_videos_created ON videos(created_at);
 CREATE INDEX IF NOT EXISTS idx_uploads_platform ON uploads(platform, created_at);
@@ -172,6 +188,82 @@ class Store:
             (platform, cutoff),
         ).fetchone()
         return int(row["n"])
+
+    # --- metrics -----------------------------------------------------
+    def remote_ids(self, platform: str) -> dict[str, int]:
+        """Map platform video id -> our video row id, for successful uploads."""
+        rows = self.conn.execute(
+            "SELECT remote_id, video_id FROM uploads"
+            " WHERE platform = ? AND status = 'ok' AND remote_id IS NOT NULL"
+            " AND remote_id != ''",
+            (platform,),
+        ).fetchall()
+        return {r["remote_id"]: r["video_id"] for r in rows}
+
+    def record_metrics(self, video_id: int, platform: str, day: str,
+                       stats: dict[str, Any]) -> None:
+        """Upsert one day's snapshot. Re-running on the same day overwrites."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO metrics (video_id, platform, day, views,"
+            " watch_minutes, avg_view_pct, avg_view_secs, likes, comments,"
+            " shares, subs_gained, fetched_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                video_id, platform, day,
+                stats.get("views"), stats.get("estimatedMinutesWatched"),
+                stats.get("averageViewPercentage"), stats.get("averageViewDuration"),
+                stats.get("likes"), stats.get("comments"), stats.get("shares"),
+                stats.get("subscribersGained"), time.time(),
+            ),
+        )
+        self.conn.commit()
+
+    def _latest_metrics_join(self) -> str:
+        """Only the newest snapshot per video counts - older ones are history."""
+        return (
+            " JOIN metrics m ON m.video_id = v.id"
+            " JOIN (SELECT video_id, platform, MAX(day) AS md FROM metrics"
+            "       GROUP BY video_id, platform) latest"
+            "   ON latest.video_id = m.video_id AND latest.platform = m.platform"
+            "  AND latest.md = m.day"
+        )
+
+    def performance_by(self, column: str, platform: str = "youtube",
+                       min_videos: int = 1) -> list[sqlite3.Row]:
+        """Aggregate the latest snapshot per video, grouped by format or voice."""
+        if column not in {"format_id", "voice_id"}:
+            raise ValueError(f"not a groupable column: {column}")
+        return self.conn.execute(
+            f"SELECT v.{column} AS bucket, COUNT(*) AS videos,"
+            "  ROUND(AVG(m.views), 1) AS avg_views,"
+            "  ROUND(AVG(m.avg_view_pct), 1) AS avg_retention,"
+            "  ROUND(AVG(m.likes), 1) AS avg_likes,"
+            "  SUM(m.subs_gained) AS subs"
+            " FROM videos v" + self._latest_metrics_join() +
+            " WHERE m.platform = ?"
+            f" GROUP BY v.{column} HAVING COUNT(*) >= ?"
+            " ORDER BY avg_retention DESC, avg_views DESC",
+            (platform, min_videos),
+        ).fetchall()
+
+    def top_videos(self, platform: str = "youtube", limit: int = 10) -> list[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT v.title, v.format_id, m.views, m.avg_view_pct, m.likes"
+            " FROM videos v" + self._latest_metrics_join() +
+            " WHERE m.platform = ? ORDER BY m.views DESC LIMIT ?",
+            (platform, limit),
+        ).fetchall()
+
+    def metrics_coverage(self, platform: str = "youtube") -> tuple[int, int]:
+        """(videos with metrics, videos published) - how complete the picture is."""
+        row = self.conn.execute(
+            "SELECT (SELECT COUNT(DISTINCT video_id) FROM metrics WHERE platform = ?)"
+            " AS have,"
+            " (SELECT COUNT(DISTINCT video_id) FROM uploads"
+            "  WHERE platform = ? AND status = 'ok') AS total",
+            (platform, platform),
+        ).fetchone()
+        return int(row["have"]), int(row["total"])
 
     def close(self) -> None:
         self.conn.close()

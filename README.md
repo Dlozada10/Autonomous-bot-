@@ -32,9 +32,44 @@ python run.py daemon          # run forever on the configured schedule
 | `publish` | Uploads anything rendered but not yet sent |
 | `once` | `make` + `publish` |
 | `daemon` | Sleeps until each schedule slot, then runs a cycle |
+| `metrics` | Pulls YouTube performance data into the database |
+| `report` | Ranks formats and voices by retention |
 | `status` | Last 15 videos and today's per-platform counts |
 | `demo` | Renders a sample with no credentials, to sanity-check the video path |
 | `auth youtube` | One-time OAuth consent |
+
+## Closing the loop
+
+Rotation starts out random. Once there is data, it should not stay that way.
+
+```bash
+python run.py metrics    # pull performance into the db (also runs each cycle)
+python run.py report     # rank formats and voices by retention
+```
+
+`metrics` stores a dated snapshot per video, so history accumulates rather than
+being overwritten; aggregates always use the newest snapshot per video. After a
+few weeks, `report` looks like this:
+
+```
+BY FORMAT
+                                 n    views  retention   likes   subs
+  The thing people get wrong     4     2228      65.5%    42.0     10
+  Head-to-head                   4     1455      62.9%    28.0      6
+  Single-tool teardown           4     1118      49.4%    18.0      8
+  Do-this-in-N-steps             4      579      43.1%    14.0     16
+  What shipped                   4      565      37.9%    12.0     15
+```
+
+Read the retention column, not views. Views follow distribution and luck;
+retention tells you whether the format itself works. When a format sits at the
+bottom across 10+ videos, delete it from `formats.variants` and let the
+rotation concentrate on what earns attention.
+
+**Analytics needs a scope the upload token does not have.** If you authorised
+YouTube before this was added, `python run.py doctor` will say so — re-run
+`python run.py auth youtube` to re-consent. Analytics also lags roughly 48
+hours, so today's uploads legitimately show nothing.
 
 ## Tests
 
@@ -42,10 +77,10 @@ python run.py daemon          # run forever on the configured schedule
 python -m unittest discover -s tests -t .
 ```
 
-49 tests, ~8 seconds, no API keys or network required. Covers topic dedupe and
+66 tests, ~10 seconds, no API keys or network required. Covers topic dedupe and
 the similarity window, format/voice cooldown rotation, upload queueing and daily
-caps, word-timing maths, ASS subtitle structure, the quality floors, and a real
-end-to-end render that probes the output with ffprobe.
+caps, word-timing maths, ASS subtitle structure, the quality floors, metrics
+snapshotting and aggregation, and a real end-to-end render probed with ffprobe.
 
 ## How it works
 

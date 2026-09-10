@@ -115,7 +115,17 @@ def publish_pending(cfg: Any, store: Any) -> None:
                 print(f"  ! {platform} failed: {exc}")
 
 
+def refresh_metrics(cfg: Any, store: Any) -> None:
+    """Best-effort analytics pull. Never allowed to block making a video."""
+    try:
+        from . import metrics
+        metrics.pull(cfg, store)
+    except Exception as exc:
+        print(f"! metrics pull skipped: {exc}")
+
+
 def cycle(cfg: Any, store: Any) -> None:
-    """One full turn of the crank: make a video, then publish what's ready."""
+    """One full turn of the crank: make a video, publish, then update stats."""
     make_video(cfg, store)
     publish_pending(cfg, store)
+    refresh_metrics(cfg, store)

@@ -5,6 +5,8 @@
   python run.py discover            refresh the topic pool
   python run.py make                produce one video (no upload)
   python run.py publish             upload anything rendered but unsent
+  python run.py metrics             pull YouTube performance data into the db
+  python run.py report              what the data says about formats and voices
   python run.py once                make + publish, one cycle
   python run.py daemon              run forever on the configured schedule
   python run.py auth youtube        one-time YouTube OAuth consent
@@ -63,6 +65,15 @@ def cmd_doctor() -> int:
             print(f"[{'ok' if good else 'XX'}] youtube token: {token}"
                   f"{'' if good else '  (run: python run.py auth youtube)'}")
             ok &= good
+            if good:
+                # A token granted before analytics was added still uploads
+                # fine but cannot read performance data.
+                from core.publish.youtube import ANALYTICS_SCOPE
+                import json as _json
+                granted = set(_json.loads(token.read_text()).get("scopes") or [])
+                has_analytics = ANALYTICS_SCOPE in granted
+                print(f"[{'ok' if has_analytics else '--'}] youtube analytics scope"
+                      f"{'' if has_analytics else '  (re-run auth to enable `metrics`)'}")
         elif platform == "tiktok":
             good = bool(cfg.env("TIKTOK_ACCESS_TOKEN"))
             print(f"[{'ok' if good else 'XX'}] tiktok access token")
@@ -108,6 +119,27 @@ def cmd_publish() -> int:
 def cmd_once() -> int:
     cfg, store = _open()
     pipeline.cycle(cfg, store)
+    store.close()
+    return 0
+
+
+def cmd_metrics() -> int:
+    from core import metrics
+    cfg, store = _open()
+    try:
+        metrics.pull(cfg, store)
+    except Exception as exc:
+        print(f"! {exc}")
+        store.close()
+        return 1
+    store.close()
+    return 0
+
+
+def cmd_report() -> int:
+    from core import metrics
+    cfg, store = _open()
+    metrics.report(cfg, store)
     store.close()
     return 0
 
@@ -216,7 +248,8 @@ def cmd_demo() -> int:
 COMMANDS = {
     "doctor": cmd_doctor, "discover": cmd_discover, "make": cmd_make,
     "publish": cmd_publish, "once": cmd_once, "daemon": cmd_daemon,
-    "status": cmd_status, "demo": cmd_demo,
+    "status": cmd_status, "demo": cmd_demo, "metrics": cmd_metrics,
+    "report": cmd_report,
 }
 
 

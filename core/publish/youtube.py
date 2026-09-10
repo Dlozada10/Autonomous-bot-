@@ -9,28 +9,51 @@ import json
 from pathlib import Path
 from typing import Any
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
+ANALYTICS_SCOPE = "https://www.googleapis.com/auth/yt-analytics.readonly"
+SCOPES = [UPLOAD_SCOPE, ANALYTICS_SCOPE]
 
 
-def _service(cfg: Any):
+def credentials(cfg: Any, needs: str = UPLOAD_SCOPE):
+    """Load the stored token, refresh it if stale, and confirm it actually
+    carries the scope the caller needs.
+
+    Scopes are read from the token file rather than asserted, so a token
+    granted before a scope was added fails with an instruction instead of a
+    403 from the API three calls later.
+    """
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
-    from googleapiclient.discovery import build
 
     token_path = Path(cfg.env("YOUTUBE_TOKEN", "secrets/youtube_token.json"))
     if not token_path.exists():
+        raise RuntimeError(f"{token_path} not found. Run: python run.py auth youtube")
+
+    info = json.loads(token_path.read_text())
+    creds = Credentials.from_authorized_user_info(info)
+
+    granted = set(creds.scopes or info.get("scopes") or [])
+    if needs not in granted:
         raise RuntimeError(
-            f"{token_path} not found. Run: python run.py auth youtube"
+            f"the stored YouTube token does not grant {needs}.\n"
+            f"It has: {', '.join(sorted(granted)) or '(none recorded)'}\n"
+            "Re-run `python run.py auth youtube` to re-consent with the "
+            "scopes this build needs."
         )
-    creds = Credentials.from_authorized_user_info(
-        json.loads(token_path.read_text()), SCOPES
-    )
+
     if not creds.valid:
         if not (creds.expired and creds.refresh_token):
             raise RuntimeError("YouTube credentials are invalid; re-run auth.")
         creds.refresh(Request())
         token_path.write_text(creds.to_json())
-    return build("youtube", "v3", credentials=creds, cache_discovery=False)
+    return creds
+
+
+def _service(cfg: Any):
+    from googleapiclient.discovery import build
+
+    return build("youtube", "v3", credentials=credentials(cfg, UPLOAD_SCOPE),
+                 cache_discovery=False)
 
 
 def authorize(cfg: Any) -> None:
