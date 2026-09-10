@@ -1,0 +1,193 @@
+"""Script generation and the quality gate.
+
+Two Claude calls per video:
+  1. write()  - produces a structured script for a chosen format variant
+  2. grade()  - independently scores it; low scores are rejected and retried
+
+The grader is the load-bearing part of running unattended. It is what stands
+between an auto-publishing channel and the one bad video that costs it.
+"""
+from __future__ import annotations
+
+import json
+import random
+from typing import Any
+
+import anthropic
+from pydantic import BaseModel, Field
+
+MODEL = "claude-opus-5"
+
+
+# --------------------------------------------------------------------
+#  Schemas
+# --------------------------------------------------------------------
+class Beat(BaseModel):
+    voiceover: str = Field(description="Exactly what the narrator says. One or two sentences, spoken register, no stage directions.")
+    caption: str = Field(description="On-screen text for this beat. 2-5 words, no ending punctuation. Not a copy of the voiceover.")
+    b_roll: str = Field(description="Two or three words describing footage for this beat, e.g. 'server racks' or 'person typing laptop'.")
+
+
+class Script(BaseModel):
+    title: str = Field(description="YouTube Shorts title, under 70 characters. Specific and concrete. No clickbait punctuation, no all-caps words.")
+    hook: Beat = Field(description="The first 3 seconds. Must name something specific and create a real question in the viewer's mind.")
+    beats: list[Beat] = Field(description="The body of the video, in order.")
+    payoff: Beat = Field(description="The closing beat. Resolves the hook with something the viewer can act on. No 'like and subscribe'.")
+    description: str = Field(description="2-3 sentence description for the platform. Plain, informative.")
+    hashtags: list[str] = Field(description="4-6 lowercase hashtags without the # symbol.")
+
+    def lines(self) -> list[Beat]:
+        return [self.hook, *self.beats, self.payoff]
+
+    def spoken_text(self) -> str:
+        return " ".join(b.voiceover.strip() for b in self.lines())
+
+    def word_count(self) -> int:
+        return len(self.spoken_text().split())
+
+
+class Grade(BaseModel):
+    hook_strength: int = Field(description="0-100. Would a scrolling viewer stop in the first 3 seconds? Generic openers score below 50.")
+    factual_grounding: int = Field(description="0-100. Is every claim supported by the supplied source material? Any invented number, price, benchmark, or feature is an automatic score below 40.")
+    originality: int = Field(description="0-100. Does this say something the viewer could not get from the headline alone? Recycled listicle phrasing scores below 50.")
+    policy_safety: int = Field(description="0-100. Free of medical/financial/legal advice, unverifiable superlatives, engagement bait, and anything defamatory about a named company. 100 means clean.")
+    verdict: str = Field(description="One sentence explaining the lowest-scoring dimension.")
+    fix: str = Field(description="One concrete instruction that would raise the weakest score. Empty string if the script passes cleanly.")
+
+
+# --------------------------------------------------------------------
+#  Prompting
+# --------------------------------------------------------------------
+def _system(cfg: Any, fmt: dict) -> str:
+    forbidden = "\n".join(f"- {item}" for item in cfg.get("channel.forbidden", []))
+    seconds = cfg.get("video.target_seconds", 38)
+    # ~2.6 words/second at a natural short-form delivery pace.
+    budget = int(seconds * 2.6)
+    return f"""You write scripts for {cfg.get('channel.name')}, a short-form vertical video channel about {cfg.get('channel.niche')}.
+
+AUDIENCE
+{cfg.get('channel.audience')}
+
+FORMAT FOR THIS VIDEO: {fmt['label']}
+{fmt['structure']}
+Write exactly {fmt['beats']} body beats, plus the hook and the payoff.
+
+HARD RULES
+- Total spoken words across every beat: {budget - 15} to {budget + 15}. This is a hard budget; the video is cut to length otherwise.
+- Every factual claim must trace to the source material you are given. If the source does not state a number, do not state a number.
+- If the source material is too thin to support a specific, non-obvious video, say so by making the hook voiceover exactly "INSUFFICIENT_SOURCE" and leave other fields short. Do not pad a weak topic.
+- Captions are not subtitles. They are punchy on-screen fragments that add emphasis, not a transcript of the voiceover.
+- Write for the ear. Short sentences. No semicolons, no parentheticals, no bulleted phrasing read aloud.
+
+NEVER DO THESE
+{forbidden}
+
+The single most common failure is a script that sounds like every other AI video: broad, breathless, and specific about nothing. Name the tool. Name what it replaces. Name the tradeoff."""
+
+
+def _source_block(topic: dict) -> str:
+    return f"""SOURCE MATERIAL
+Headline: {topic['title']}
+Origin: {topic.get('source') or 'unknown'}
+URL: {topic.get('url') or 'n/a'}
+Summary: {topic.get('summary') or '(no summary text was available beyond the headline)'}"""
+
+
+def pick_format(cfg: Any, store: Any) -> dict:
+    """Choose a format that hasn't been used inside the cooldown window."""
+    variants = cfg.get("formats.variants", [])
+    cooldown = int(cfg.get("formats.cooldown", 4))
+    recent = set(store.recent_values("format_id", cooldown))
+    eligible = [v for v in variants if v["id"] not in recent] or variants
+    return random.choice(eligible)
+
+
+def write(client: anthropic.Anthropic, cfg: Any, topic: dict, fmt: dict,
+          feedback: str = "") -> Script | None:
+    """Generate one script. Returns None if the model declined or bailed."""
+    user = _source_block(topic)
+    if feedback:
+        user += f"\n\nA previous attempt was rejected by review. Fix this specifically:\n{feedback}"
+
+    resp = client.messages.parse(
+        model=MODEL,
+        max_tokens=8000,
+        system=_system(cfg, fmt),
+        messages=[{"role": "user", "content": user}],
+        output_format=Script,
+        thinking={"type": "adaptive"},
+    )
+    if resp.stop_reason == "refusal":
+        print(f"  ! model declined this topic ({getattr(resp.stop_details, 'category', '?')})")
+        return None
+
+    script = resp.parsed_output
+    if script.hook.voiceover.strip() == "INSUFFICIENT_SOURCE":
+        print("  ! source too thin for a specific script")
+        return None
+    return script
+
+
+def grade(client: anthropic.Anthropic, cfg: Any, topic: dict, script: Script) -> Grade:
+    """Independent scoring pass. Deliberately given the source, not the prompt."""
+    resp = client.messages.parse(
+        model=MODEL,
+        max_tokens=4000,
+        system=(
+            "You are a harsh reviewer for a short-form video channel. You are the last "
+            "check before the video publishes automatically with no human involved. "
+            "Score honestly and low by default; a merely competent script is a 60, not an 85. "
+            "You are looking for reasons to reject, not reasons to approve."
+        ),
+        messages=[{
+            "role": "user",
+            "content": f"{_source_block(topic)}\n\nSCRIPT UNDER REVIEW\n{script.model_dump_json(indent=2)}",
+        }],
+        output_format=Grade,
+        thinking={"type": "adaptive"},
+    )
+    return resp.parsed_output
+
+
+def passes(cfg: Any, g: Grade) -> tuple[bool, str]:
+    """Apply the configured floors and the aggregate minimum."""
+    floors = cfg.get("quality.floors", {})
+    for dim, floor in floors.items():
+        value = getattr(g, dim, 100)
+        if value < int(floor):
+            return False, f"{dim}={value} below floor {floor}: {g.verdict}"
+
+    dims = [g.hook_strength, g.factual_grounding, g.originality, g.policy_safety]
+    total = sum(dims) / len(dims)
+    minimum = float(cfg.get("quality.min_score", 78))
+    if total < minimum:
+        return False, f"average {total:.0f} below minimum {minimum:.0f}: {g.verdict}"
+    return True, f"passed at {total:.0f}"
+
+
+def produce(client: anthropic.Anthropic, cfg: Any, store: Any,
+            topic: dict) -> tuple[Script, dict, float] | None:
+    """Write -> grade -> retry loop. Returns (script, format, score) or None."""
+    fmt = pick_format(cfg, store)
+    print(f"  format: {fmt['label']}")
+    feedback = ""
+
+    for attempt in range(int(cfg.get("quality.max_retries", 2)) + 1):
+        script = write(client, cfg, topic, fmt, feedback)
+        if script is None:
+            return None
+
+        words = script.word_count()
+        g = grade(client, cfg, topic, script)
+        ok, reason = passes(cfg, g)
+        avg = (g.hook_strength + g.factual_grounding + g.originality + g.policy_safety) / 4
+        print(f"  attempt {attempt + 1}: {words}w | hook {g.hook_strength} "
+              f"grounding {g.factual_grounding} orig {g.originality} "
+              f"safety {g.policy_safety} -> {reason}")
+
+        if ok:
+            return script, fmt, avg
+        feedback = g.fix or g.verdict
+
+    print("  ! failed review, skipping topic")
+    return None

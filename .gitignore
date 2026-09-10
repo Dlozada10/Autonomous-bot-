@@ -1,0 +1,6 @@
+.env
+secrets/
+out/
+state.db
+__pycache__/
+*.pyc

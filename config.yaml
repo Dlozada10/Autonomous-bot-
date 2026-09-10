@@ -1,0 +1,148 @@
+# ============================================================
+#  Channel identity
+# ============================================================
+channel:
+  name: "Stack Signal"
+  niche: "AI tools & automation"
+  # Who you are talking to. Sharpens every script.
+  audience: >
+    Working professionals and solo builders who are not engineers but are
+    tool-curious. They want to know what a tool actually does, whether it is
+    worth switching to, and what it costs. They are tired of hype.
+  # Things the channel will never do. Enforced by the quality gate.
+  forbidden:
+    - "Vague hype with no specific capability named"
+    - "Claiming a tool does something not stated in the source material"
+    - "Fake urgency ('this changes everything', 'nobody is talking about this')"
+    - "Engagement bait ('comment X and I'll send you...')"
+    - "Financial, legal, or medical advice"
+    - "Naming a price or limit without it appearing in the source"
+
+# ============================================================
+#  Video format
+#  Rotating formats are the primary defence against YouTube's
+#  inauthentic-content policy: no two consecutive videos share
+#  a structure, and a format cannot repeat within `cooldown` posts.
+# ============================================================
+video:
+  width: 1080
+  height: 1920
+  fps: 30
+  target_seconds: 38        # sweet spot for retention on Shorts
+  max_seconds: 58           # hard ceiling (Shorts eligibility)
+  min_seconds: 20
+
+formats:
+  cooldown: 4               # a format cannot recur within N videos
+  variants:
+    - id: "teardown"
+      label: "Single-tool teardown"
+      structure: "Name the tool, the one job it does better than anything else, the catch, who should switch."
+      beats: 4
+      visual: "gradient_drift"
+    - id: "compare"
+      label: "Head-to-head"
+      structure: "Two tools solving the same job. Pick a winner on a specific axis and justify it in one line."
+      beats: 5
+      visual: "split_slide"
+    - id: "workflow"
+      label: "Do-this-in-N-steps"
+      structure: "A concrete outcome, then the numbered steps to get it. Every step names a real tool."
+      beats: 5
+      visual: "step_stack"
+    - id: "mistake"
+      label: "The thing people get wrong"
+      structure: "A common misuse, why it fails, the correct approach, the measurable difference."
+      beats: 4
+      visual: "warn_pulse"
+    - id: "news"
+      label: "What shipped"
+      structure: "What changed, what it replaces, who it matters to, what to do about it today."
+      beats: 4
+      visual: "ticker"
+
+# ============================================================
+#  Voice rotation (also anti-repetition)
+# ============================================================
+voice:
+  provider: "elevenlabs"    # elevenlabs | openai | silent
+  model: "eleven_turbo_v2_5"
+  speed: 1.06
+  cooldown: 2
+  # ElevenLabs voice IDs. Replace with voices from your own account.
+  pool:
+    - id: "IKne3meq5aSn9XLyUdCD"
+      label: "Charlie - conversational male"
+    - id: "XB0fDUnXU5powFXDhCwa"
+      label: "Charlotte - warm female"
+    - id: "onwK4e9ZLuTAKqWW03F9"
+      label: "Daniel - crisp British male"
+
+# ============================================================
+#  Topic discovery
+# ============================================================
+topics:
+  # How many candidates to gather before ranking.
+  pool_size: 60
+  # Reject a topic too similar to anything published in the last N days.
+  dedupe_days: 120
+  similarity_threshold: 0.62
+  max_age_days: 21
+  sources:
+    rss:
+      - "https://techcrunch.com/category/artificial-intelligence/feed/"
+      - "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
+      - "https://venturebeat.com/category/ai/feed/"
+      - "https://huggingface.co/blog/feed.xml"
+      - "https://openai.com/news/rss.xml"
+      - "https://news.smol.ai/rss.xml"
+    hackernews:
+      enabled: true
+      min_points: 120
+      query: "AI OR LLM OR agent OR automation"
+    github_trending:
+      enabled: true
+      language: "python"
+
+# ============================================================
+#  Quality gate - the thing standing between you and a strike
+# ============================================================
+quality:
+  min_score: 78             # 0-100; below this the script is rejected
+  max_retries: 2            # regenerate this many times before skipping the topic
+  # Any single dimension below its floor fails the script outright,
+  # regardless of the total score.
+  floors:
+    hook_strength: 70
+    factual_grounding: 85
+    originality: 70
+    policy_safety: 90
+
+# ============================================================
+#  Publishing
+# ============================================================
+publish:
+  # Fully hands-off. Set to true to render + hold for review instead.
+  dry_run: false
+  platforms:
+    youtube:
+      enabled: true
+      privacy: "public"
+      category_id: "28"     # Science & Technology
+      # YouTube's default API quota (10,000 units/day) allows ~6 uploads/day.
+      max_per_day: 3
+    tiktok:
+      enabled: false        # requires an approved developer app - see README
+      max_per_day: 3
+    instagram:
+      enabled: false        # requires PUBLIC_MEDIA_BASE_URL - see README
+      max_per_day: 3
+  # Local times, 24h. One video per slot.
+  schedule:
+    timezone: "America/New_York"
+    slots: ["08:30", "13:00", "18:30"]
+
+paths:
+  out_dir: "out"
+  assets_dir: "assets"
+  db: "state.db"
