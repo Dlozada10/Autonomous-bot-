@@ -151,9 +151,19 @@ def grade(client: anthropic.Anthropic, cfg: Any, topic: dict, script: Script) ->
 
 def passes(cfg: Any, g: Grade) -> tuple[bool, str]:
     """Apply the configured floors and the aggregate minimum."""
-    floors = cfg.get("quality.floors", {})
+    floors = cfg.get("quality.floors", {}) or {}
+    # A floor naming a dimension the grader does not produce is a config typo.
+    # Resolving it with a default silently either ignores the floor or blocks
+    # every script; neither is discoverable. Fail loudly instead.
+    unknown = set(floors) - set(Grade.model_fields)
+    if unknown:
+        raise ValueError(
+            f"quality.floors names unknown dimension(s): {sorted(unknown)}. "
+            f"Valid dimensions: {sorted(Grade.model_fields)}"
+        )
+
     for dim, floor in floors.items():
-        value = getattr(g, dim, 100)
+        value = getattr(g, dim)
         if value < int(floor):
             return False, f"{dim}={value} below floor {floor}: {g.verdict}"
 

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Mutation testing for the logic that fails silently.
 
+Covers dedupe, cooldown rotation, the quality gate, and the render path.
+
 A passing test suite only proves the tests agree with the code, not that they
-would notice if the code were wrong. This deliberately breaks dedupe and
-cooldown one line at a time and checks the suite turns red.
+would notice if the code were wrong. This deliberately breaks that
+logic one line at a time and checks the suite turns red.
 
 A SURVIVED mutant is a hole: the code was broken and nothing complained.
 
@@ -70,6 +72,58 @@ MUTANTS = [
     ("cooldown", "voice fallback removed for an empty pool", "core/voice.py",
      'pool = cfg.get("voice.pool", []) or [{"id": "", "label": "default"}]',
      'pool = cfg.get("voice.pool", [])'),
+
+    # ---- quality gate: the floors ----
+    ("quality", "floors not enforced at all", "core/script.py",
+     '        if value < int(floor):\n            return False, f"{dim}={value} below floor {floor}: {g.verdict}"',
+     '        if False:\n            return False, f"{dim}={value} below floor {floor}: {g.verdict}"'),
+    ("quality", "floor boundary flipped (< becomes <=)", "core/script.py",
+     'if value < int(floor):',
+     'if value <= int(floor):'),
+    ("quality", "typo'd floor key silently ignored", "core/script.py",
+     "    if unknown:\n        raise ValueError(",
+     "    if False:\n        raise ValueError("),
+
+    # ---- quality gate: the aggregate ----
+    ("quality", "average threshold not enforced", "core/script.py",
+     '    if total < minimum:',
+     '    if False:'),
+    ("quality", "average boundary flipped (< becomes <=)", "core/script.py",
+     '    if total < minimum:',
+     '    if total <= minimum:'),
+    ("quality", "best dimension used instead of the mean", "core/script.py",
+     'total = sum(dims) / len(dims)',
+     'total = max(dims)'),
+    ("quality", "gate always passes", "core/script.py",
+     'def passes(cfg: Any, g: Grade) -> tuple[bool, str]:\n    """Apply the configured floors and the aggregate minimum."""',
+     'def passes(cfg: Any, g: Grade) -> tuple[bool, str]:\n    """Apply the configured floors and the aggregate minimum."""\n    return True, "mutant"'),
+
+    # ---- render: the Shorts ceiling ----
+    ("render", "length ceiling not enforced", "core/render.py",
+     '    if duration > max_seconds:',
+     '    if False:'),
+    ("render", "ceiling boundary flipped (> becomes >=)", "core/render.py",
+     '    if duration > max_seconds:',
+     '    if duration >= max_seconds:'),
+
+    # ---- render: the video itself ----
+    ("render", "captions never burned in", "core/render.py",
+     "f\"subtitles='{escaped}':fontsdir=/usr/share/fonts[vout]\"",
+     "f\"null[vout]\""),
+    ("render", "frame rendered landscape instead of vertical", "core/render.py",
+     '    w = int(cfg.get("video.width", 1080))\n    h = int(cfg.get("video.height", 1920))',
+     '    h = int(cfg.get("video.width", 1080))\n    w = int(cfg.get("video.height", 1920))'),
+
+    # ---- render: the audio timeline ----
+    ("render", "beat gap removed from the timeline", "core/render.py",
+     'BEAT_GAP = 0.20',
+     'BEAT_GAP = 0.0'),
+    ("render", "word timings not shifted onto the timeline", "core/render.py",
+     'shifted = [Word(w.text, w.start + cursor, w.end + cursor) for w in clip.words]',
+     'shifted = [Word(w.text, w.start, w.end) for w in clip.words]'),
+    ("render", "cursor advances without the gap", "core/render.py",
+     'cursor += clip.duration + BEAT_GAP',
+     'cursor += clip.duration'),
 ]
 
 
@@ -118,7 +172,8 @@ def main() -> int:
         print("\nEach one is a change that breaks the channel silently.")
         return 1
 
-    print(f"all {len(MUTANTS)} mutants killed - dedupe and cooldown are covered")
+    areas = sorted({area for area, *_ in MUTANTS})
+    print(f"all {len(MUTANTS)} mutants killed across: {', '.join(areas)}")
     return 0
 
 

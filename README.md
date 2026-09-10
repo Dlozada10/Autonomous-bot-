@@ -77,7 +77,7 @@ hours, so today's uploads legitimately show nothing.
 python -m unittest discover -s tests -t .
 ```
 
-82 tests, ~10 seconds, no API keys or network required. Covers topic dedupe and
+92 tests, ~30 seconds, no API keys or network required. Covers topic dedupe and
 the similarity window, format/voice cooldown rotation, upload queueing and daily
 caps, word-timing maths, ASS subtitle structure, the quality floors, metrics
 snapshotting and aggregation, and a real end-to-end render probed with ffprobe.
@@ -95,15 +95,17 @@ exists to catch.
 python tests/mutate.py
 ```
 
-Dedupe and cooldown fail silently when they break — the pipeline keeps
-producing videos, they just start repeating. A green suite is not evidence the
-tests would notice. This breaks that logic 14 ways, one line at a time, and
-checks the suite turns red for each.
+Most of this pipeline fails silently when it breaks — it keeps producing
+videos, they are just worse. A green suite is not evidence the tests would
+notice. This breaks the load-bearing logic 28 ways, one line at a time, and
+checks the suite turns red for each, across four areas: dedupe, cooldown
+rotation, the quality gate, and the render path.
 
 A `SURVIVED` line means the code was broken and nothing complained; treat it as
-a missing test, not a curiosity. The first run found two real holes: an order
-test whose two inputs happened to normalise to the same sequence anyway, and an
-unpinned `>=` boundary on the similarity threshold. Both are covered now.
+a missing test, not a curiosity. It has found six real holes so far, including an order test whose two inputs
+happened to normalise to the same sequence anyway, a test that imported
+`RenderError` and never asserted it, and three unpinned comparison boundaries.
+All 28 mutants are killed as of the current commit.
 
 ## How it works
 
