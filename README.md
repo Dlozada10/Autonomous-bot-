@@ -77,7 +77,7 @@ hours, so today's uploads legitimately show nothing.
 python -m unittest discover -s tests -t .
 ```
 
-79 tests, ~10 seconds, no API keys or network required. Covers topic dedupe and
+81 tests, ~10 seconds, no API keys or network required. Covers topic dedupe and
 the similarity window, format/voice cooldown rotation, upload queueing and daily
 caps, word-timing maths, ASS subtitle structure, the quality floors, metrics
 snapshotting and aggregation, and a real end-to-end render probed with ffprobe.
@@ -88,6 +88,22 @@ response columns being mapped by name rather than position. That last one is
 mutation-checked — rewriting the mapping positionally makes the test fail with
 `subscribersGained` landing in the views column, which is exactly the bug it
 exists to catch.
+
+### Mutation testing
+
+```bash
+python tests/mutate.py
+```
+
+Dedupe and cooldown fail silently when they break — the pipeline keeps
+producing videos, they just start repeating. A green suite is not evidence the
+tests would notice. This breaks that logic 14 ways, one line at a time, and
+checks the suite turns red for each.
+
+A `SURVIVED` line means the code was broken and nothing complained; treat it as
+a missing test, not a curiosity. The first run found two real holes: an order
+test whose two inputs happened to normalise to the same sequence anyway, and an
+unpinned `>=` boundary on the similarity threshold. Both are covered now.
 
 ## How it works
 

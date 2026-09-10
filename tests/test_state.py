@@ -3,6 +3,7 @@ which is both an audience problem and a monetisation-review problem.
 """
 import tempfile
 import unittest
+from difflib import SequenceMatcher
 from pathlib import Path
 
 from core.state import Store, normalise
@@ -13,6 +14,20 @@ class TestNormalise(unittest.TestCase):
         a = normalise("OpenAI Ships a New Agents SDK!")
         b = normalise("openai ships the new agents sdk")
         self.assertEqual(a, b)
+
+    def test_word_order_does_not_matter(self):
+        # Same words, genuinely different order. Sorting is what makes these
+        # equal; without it a reordered headline reads as a fresh topic.
+        self.assertEqual(
+            normalise("Anthropic ships memory tool"),
+            normalise("memory tool ships Anthropic"),
+        )
+
+    def test_reordering_is_not_confused_with_different_words(self):
+        self.assertNotEqual(
+            normalise("Anthropic ships memory tool"),
+            normalise("Anthropic ships routing tool"),
+        )
 
     def test_drops_stopwords(self):
         self.assertNotIn("the", normalise("the best of the tools").split())
@@ -54,6 +69,22 @@ class TestDedupe(StoreCase):
         self.assertTrue(
             self.store.is_too_similar("Anthropic ships the memory tool", 120, 0.62)
         )
+
+    def test_threshold_is_inclusive_at_the_boundary(self):
+        published = "Anthropic ships a memory tool"
+        candidate = "Anthropic ships the memory tools"
+        tid = self.store.add_topic(published, "u", "s", "")
+        self.store.mark_topic_used(tid)
+
+        # Pin the exact ratio, then assert behaviour on both sides of it.
+        exact = SequenceMatcher(
+            None, normalise(candidate), normalise(published)
+        ).ratio()
+
+        # At exactly the threshold the topic must be blocked (>=, not >).
+        self.assertTrue(self.store.is_too_similar(candidate, 120, exact))
+        # A hair above it, the same topic must be allowed through.
+        self.assertFalse(self.store.is_too_similar(candidate, 120, exact + 1e-9))
 
     def test_unrelated_topic_passes(self):
         tid = self.store.add_topic("Anthropic ships a memory tool", "u", "s", "")
