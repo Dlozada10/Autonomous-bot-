@@ -77,7 +77,7 @@ hours, so today's uploads legitimately show nothing.
 python -m unittest discover -s tests -t .
 ```
 
-81 tests, ~10 seconds, no API keys or network required. Covers topic dedupe and
+82 tests, ~10 seconds, no API keys or network required. Covers topic dedupe and
 the similarity window, format/voice cooldown rotation, upload queueing and daily
 caps, word-timing maths, ASS subtitle structure, the quality floors, metrics
 snapshotting and aggregation, and a real end-to-end render probed with ffprobe.
