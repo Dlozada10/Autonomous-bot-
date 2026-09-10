@@ -108,7 +108,11 @@ topics:
 #  Quality gate - the thing standing between you and a strike
 # ============================================================
 quality:
-  min_score: 78             # 0-100; below this the script is rejected
+  # 0-100 average across the four dimensions. Must sit ABOVE the mean of the
+  # floors below (currently 78.75) or it can never reject anything the floors
+  # do not already catch. This is what rejects a script that scrapes past
+  # every floor without being good at anything.
+  min_score: 82
   max_retries: 2            # regenerate this many times before skipping the topic
   # Any single dimension below its floor fails the script outright,
   # regardless of the total score.

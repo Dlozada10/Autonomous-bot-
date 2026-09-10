@@ -36,6 +36,17 @@ python run.py daemon          # run forever on the configured schedule
 | `demo` | Renders a sample with no credentials, to sanity-check the video path |
 | `auth youtube` | One-time OAuth consent |
 
+## Tests
+
+```bash
+python -m unittest discover -s tests -t .
+```
+
+49 tests, ~8 seconds, no API keys or network required. Covers topic dedupe and
+the similarity window, format/voice cooldown rotation, upload queueing and daily
+caps, word-timing maths, ASS subtitle structure, the quality floors, and a real
+end-to-end render that probes the output with ffprobe.
+
 ## How it works
 
 ```
