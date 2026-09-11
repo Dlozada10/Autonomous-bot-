@@ -3,13 +3,16 @@
 # ============================================================
 channel:
   name: "Stack Signal"
-  niche: "AI tools & automation"
+  niche: "AI developer tools and automation"
   # Who you are talking to. Sharpens every script.
   audience: >
-    Working professionals and solo builders who are not engineers but are
-    tool-curious. They want to know what a tool actually does, whether it is
-    worth switching to, and what it costs. They are tired of hype.
-  # Things the channel will never do. Enforced by the quality gate.
+    Developers and technical builders who already use AI tools daily and are
+    deciding what to adopt next. They read release notes, they have opinions
+    about their stack, and they can tell when a claim is hand-waved. Assume
+    they know what an API, a model provider and a streaming response are - do
+    not explain the basics, and do not flatten technical detail into analogy.
+    What they want is the specific capability, the real tradeoff, and whether
+    it is worth switching.
   forbidden:
     - "Vague hype with no specific capability named"
     - "Claiming a tool does something not stated in the source material"
