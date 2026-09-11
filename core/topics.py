@@ -232,8 +232,15 @@ def gather(cfg: Any) -> list[Candidate]:
     return found
 
 
-def rank(candidates: list[Candidate], max_age_days: int) -> list[Candidate]:
-    """Freshness x source weight. Recency dominates - this is a news-ish niche."""
+def rank(candidates: list[Candidate], max_age_days: int,
+         max_per_source: int = 8) -> list[Candidate]:
+    """Freshness x source weight, with a per-source cap.
+
+    The cap matters more than it sounds. One prolific feed can supply most of
+    the candidate set - HuggingFace's blog contributed 861 of ~2100 on the
+    first real run - so without it the pool becomes whatever that single
+    source happens to publish, whether or not it suits the format.
+    """
     now = time.time()
     horizon = max_age_days * 86400
     scored: list[tuple[float, Candidate]] = []
@@ -246,13 +253,25 @@ def rank(candidates: list[Candidate], max_age_days: int) -> list[Candidate]:
         freshness = max(0.0, 1.0 - (age / horizon))
         scored.append((freshness * c.weight, c))
     scored.sort(key=lambda pair: pair[0], reverse=True)
-    return [c for _, c in scored]
+
+    taken: dict[str, int] = {}
+    out: list[Candidate] = []
+    for _, c in scored:
+        if taken.get(c.source, 0) >= max_per_source:
+            continue
+        taken[c.source] = taken.get(c.source, 0) + 1
+        out.append(c)
+    return out
 
 
 def refresh(cfg: Any, store: Any) -> int:
     """Discover topics and persist the new ones. Returns how many were added."""
     print("discovering topics...")
-    ranked = rank(gather(cfg), int(cfg.get("topics.max_age_days", 21)))
+    ranked = rank(
+        gather(cfg),
+        int(cfg.get("topics.max_age_days", 21)),
+        int(cfg.get("topics.max_per_source", 8)),
+    )
     ranked = ranked[: int(cfg.get("topics.pool_size", 60))]
 
     days = int(cfg.get("topics.dedupe_days", 120))

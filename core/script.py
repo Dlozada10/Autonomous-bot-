@@ -218,8 +218,8 @@ def passes(cfg: Any, g: Grade) -> tuple[bool, str]:
     total = sum(dims) / len(dims)
     minimum = float(cfg.get("quality.min_score", 78))
     if total < minimum:
-        return False, f"average {total:.0f} below minimum {minimum:.0f}: {g.verdict}"
-    return True, f"passed at {total:.0f}"
+        return False, f"average {total:.2f} below minimum {minimum:.2f}: {g.verdict}"
+    return True, f"passed at {total:.2f}"
 
 
 def produce(client: anthropic.Anthropic, cfg: Any, store: Any,

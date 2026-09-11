@@ -84,18 +84,32 @@ voice:
 topics:
   # How many candidates to gather before ranking.
   pool_size: 60
+  # No single feed may contribute more than this to the ranked pool.
+  max_per_source: 8
   # Reject a topic too similar to anything published in the last N days.
   dedupe_days: 120
   similarity_threshold: 0.62
   max_age_days: 21
   sources:
+    # Sources are chosen for ANGLE, not volume. A tutorial or release note has
+    # no surprising claim to build a video on - the grader correctly scores a
+    # script from one as a readback, because that is all it can be. Prefer
+    # sources that argue, compare, or report a change with consequences.
     rss:
+      # News and product changes
       - "https://techcrunch.com/category/artificial-intelligence/feed/"
       - "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
       - "https://venturebeat.com/category/ai/feed/"
-      - "https://huggingface.co/blog/feed.xml"
+      - "https://feeds.arstechnica.com/arstechnica/technology-lab"
       - "https://openai.com/news/rss.xml"
-      - "https://news.smol.ai/rss.xml"
+      # Opinionated practitioner writing - the richest source of angles,
+      # because the author has already done the work of having a take.
+      - "https://simonwillison.net/atom/everything/"
+      - "https://www.oneusefulthing.org/feed"
+      # Documentation-heavy. Kept for coverage, but capped like everything
+      # else - it supplied 861 of ~2100 candidates on the first real run and
+      # every script drawn from it was scored a readback.
+      - "https://huggingface.co/blog/feed.xml"
     hackernews:
       enabled: true
       min_points: 120
