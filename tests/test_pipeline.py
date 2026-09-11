@@ -29,6 +29,14 @@ class TestQualityFloors(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("factual_grounding", reason)
 
+    def test_every_failing_dimension_is_reported(self):
+        """Naming only the first failure made the message contradict the
+        grader's own verdict about which dimension was actually weakest."""
+        ok, reason = passes(self.cfg, grade(hook=10, grounding=10, orig=10, safety=10))
+        self.assertFalse(ok)
+        for dim in ("hook_strength", "factual_grounding", "originality", "policy_safety"):
+            self.assertIn(dim, reason)
+
     def test_policy_floor_overrides_a_high_average(self):
         ok, reason = passes(self.cfg, grade(hook=100, grounding=100, orig=100, safety=60))
         self.assertFalse(ok)
@@ -39,24 +47,43 @@ class TestQualityFloors(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("hook_strength", reason)
 
-    def test_mediocre_across_the_board_fails_the_average(self):
-        # Every dimension clears its floor, but the average does not.
-        ok, reason = passes(self.cfg, grade(hook=72, grounding=86, orig=72, safety=91))
+    def test_scraping_every_floor_is_not_good_enough(self):
+        """Exactly at every floor must fail on the average.
+
+        This is the whole reason min_score exists alongside the floors; if it
+        ever sits below their mean it becomes dead configuration.
+        """
+        floors = self.cfg.get("quality.floors")
+        g = grade(hook=floors["hook_strength"], grounding=floors["factual_grounding"],
+                  orig=floors["originality"], safety=floors["policy_safety"])
+        ok, reason = passes(self.cfg, g)
         self.assertFalse(ok)
         self.assertIn("average", reason)
 
+    def _at_average(self, target: float):
+        """A grade clearing every floor whose mean is exactly `target`."""
+        floors = self.cfg.get("quality.floors")
+        dims = {k: int(v) for k, v in floors.items()}
+        # Push the surplus onto whichever dimension has the most headroom.
+        surplus = target * 4 - sum(dims.values())
+        dims["policy_safety"] += surplus
+        self.assertLessEqual(dims["policy_safety"], 100, "no headroom for this target")
+        return grade(hook=dims["hook_strength"], grounding=dims["factual_grounding"],
+                     orig=dims["originality"], safety=dims["policy_safety"])
+
     def test_exactly_at_the_average_minimum_passes(self):
-        # Sums to exactly min_score while clearing every floor, pinning the
-        # comparison as strict (<): at the minimum a script is good enough.
+        # Pins the comparison as strict (<): at the minimum, good enough.
         minimum = float(self.cfg.get("quality.min_score"))
-        g = grade(hook=73, grounding=85, orig=80, safety=90)
+        g = self._at_average(minimum)
         dims = [g.hook_strength, g.factual_grounding, g.originality, g.policy_safety]
         self.assertEqual(sum(dims) / 4, minimum)
         ok, _ = passes(self.cfg, g)
         self.assertTrue(ok)
 
     def test_a_hair_below_the_average_minimum_fails(self):
-        ok, reason = passes(self.cfg, grade(hook=72, grounding=85, orig=80, safety=90))
+        minimum = float(self.cfg.get("quality.min_score"))
+        g = self._at_average(minimum - 0.25)
+        ok, reason = passes(self.cfg, g)
         self.assertFalse(ok)
         self.assertIn("average", reason)
 

@@ -82,7 +82,22 @@ HARD RULES
 NEVER DO THESE
 {forbidden}
 
-The single most common failure is a script that sounds like every other AI video: broad, breathless, and specific about nothing. Name the tool. Name what it replaces. Name the tradeoff."""
+THE FAILURE TO AVOID
+The single most common failure is a script that walks through the source in the
+source's own order, using the source's own framing. That is a readback, not a
+video. A viewer who skimmed the headline must learn something they could not
+have guessed from it.
+
+Before writing, find the ONE detail in the source that changes how a reader
+thinks about the subject - a surprising number, an unintuitive tradeoff, a
+comparison the author made in passing. Build the whole script around that. Every
+script must contain at least one concrete specific - a figure, a named tool, a
+measured difference - that appears in the body of the source and not in its
+headline.
+
+Do not narrate steps in order unless the ordering itself is the insight. A list
+of setup instructions read aloud is the single lowest-performing thing you can
+make. Name the tool. Name what it replaces. Name the tradeoff."""
 
 
 def _source_block(topic: dict) -> str:
@@ -107,7 +122,13 @@ def write(client: anthropic.Anthropic, cfg: Any, topic: dict, fmt: dict,
     """Generate one script. Returns None if the model declined or bailed."""
     user = _source_block(topic)
     if feedback:
-        user += f"\n\nA previous attempt was rejected by review. Fix this specifically:\n{feedback}"
+        user += (
+            "\n\nA previous attempt was rejected by review.\n"
+            f"{feedback}\n"
+            "Raise the weak dimension WITHOUT lowering the others - the last "
+            "attempt fixed one score by breaking another. Keep what already "
+            "scored well and change only what the review names."
+        )
 
     resp = client.messages.parse(
         model=MODEL,
@@ -162,10 +183,15 @@ def passes(cfg: Any, g: Grade) -> tuple[bool, str]:
             f"Valid dimensions: {sorted(Grade.model_fields)}"
         )
 
-    for dim, floor in floors.items():
-        value = getattr(g, dim)
-        if value < int(floor):
-            return False, f"{dim}={value} below floor {floor}: {g.verdict}"
+    failed = [
+        f"{dim}={getattr(g, dim)}<{int(floor)}"
+        for dim, floor in floors.items()
+        if getattr(g, dim) < int(floor)
+    ]
+    if failed:
+        # Reporting only the first failure made the message contradict the
+        # grader's own verdict, which names the genuinely weakest dimension.
+        return False, f"below floor: {', '.join(failed)} | {g.verdict}"
 
     dims = [g.hook_strength, g.factual_grounding, g.originality, g.policy_safety]
     total = sum(dims) / len(dims)
@@ -197,7 +223,14 @@ def produce(client: anthropic.Anthropic, cfg: Any, store: Any,
 
         if ok:
             return script, fmt, avg
-        feedback = g.fix or g.verdict
+        # The full scorecard, not just one instruction, so the rewrite can see
+        # which dimensions it must not sacrifice.
+        feedback = (
+            f"Scores - hook {g.hook_strength}, grounding {g.factual_grounding}, "
+            f"originality {g.originality}, safety {g.policy_safety}.\n"
+            f"Reviewer: {g.verdict}\n"
+            f"Required fix: {g.fix or 'address the weakest dimension above.'}"
+        )
 
     print("  ! failed review, skipping topic")
     return None

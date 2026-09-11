@@ -108,19 +108,36 @@ topics:
 #  Quality gate - the thing standing between you and a strike
 # ============================================================
 quality:
-  # 0-100 average across the four dimensions. Must sit ABOVE the mean of the
-  # floors below (currently 78.75) or it can never reject anything the floors
-  # do not already catch. This is what rejects a script that scrapes past
-  # every floor without being good at anything.
-  min_score: 82
+  # Calibrated against 9 real graded scripts, not guessed. This grader is
+  # instructed to score low by default - it puts competent-but-generic work at
+  # 50-65, so floors in the 70-90 range reject everything, forever.
+  #
+  # Observed on the first real run (median of 9): hook 58, grounding 84,
+  # originality 54, safety 90. The floors below reject all nine - every one
+  # was a readback of its source - while staying reachable for a script that
+  # actually says something.
+  #
+  # Must sit ABOVE the mean of the floors (currently 74) or it can never
+  # reject anything the floors do not already catch. This is what stops a
+  # script that scrapes past every floor without being good at anything.
+  min_score: 76
   max_retries: 2            # regenerate this many times before skipping the topic
   # Any single dimension below its floor fails the script outright,
   # regardless of the total score.
   floors:
-    hook_strength: 70
-    factual_grounding: 85
-    originality: 70
-    policy_safety: 90
+    # Nothing observed cleared 71. A hook is the whole video on Shorts, so this
+    # stays the binding constraint - but 70 was unreachable in practice.
+    hook_strength: 66
+    # Lowered from 85: the grader scored faithful scripts 80-84, so 85 was
+    # rejecting accurate work. Below 80 it starts admitting real invention.
+    factual_grounding: 80
+    # The dimension that failed hardest and most often (46-66). Raising the
+    # writer's prompt to attack readback matters more than this number, but
+    # 62 still rejects every script seen so far.
+    originality: 62
+    # Almost always 86-95. A genuine policy problem shows up as a sharp drop,
+    # so this catches the real thing without tripping on ordinary scripts.
+    policy_safety: 88
 
 # ============================================================
 #  Publishing
