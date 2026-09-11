@@ -220,16 +220,33 @@ cycle; the rendered file is never lost to a platform outage.
 
 ## Cost per video
 
-Roughly, at defaults (Claude Opus 5 for both the write and the grade):
+Measured against real runs, not estimated. Every attempt is two Opus 5 calls -
+one to write, one to grade - and both think, so output tokens dominate.
 
-| Item | Cost |
+| | cost |
 |---|---|
-| Script + grade (1 attempt) | ~$0.06 |
-| ElevenLabs narration (~100 words) | ~$0.02 |
-| Render | $0 (local ffmpeg) |
-| **Total** | **~$0.08** |
+| One attempt (write + grade) | ~$0.14 |
+| One topic (up to 3 attempts) | ~$0.43 |
+| **One `make` run that fails all 3 topics** | **~$1.30** |
+| One `make` run that succeeds on the first attempt | ~$0.15 |
 
-At 3 videos/day that is about **$7/month**. Retries and rejected topics push it
-somewhat higher. Switching `MODEL` in `core/script.py` to `claude-sonnet-5`
-cuts the Claude portion by roughly 60% - worth measuring against your own
-quality bar before doing it, since the grader is the safety mechanism.
+**Failed runs are the expensive case, and they produce nothing.** A run that
+rejects everything costs roughly eight times one that succeeds immediately.
+That makes the calibration of `quality.floors` a cost decision as well as a
+quality one: floors set too high burn credit generating work you throw away.
+
+Ways to cut it, in order of how much quality they cost you:
+
+- **Lower `quality.max_retries`.** Two retries costs three attempts per topic.
+  Dropping to one nearly halves the worst case.
+- **Use a cheaper model for the grader.** Set `GRADER_MODEL` in `core/script.py`
+  to `claude-sonnet-5`, which is roughly 40% of Opus pricing on output. The
+  grader is doing classification against explicit criteria, which is a cheaper
+  task than writing. Measure before keeping it - the grader is the safety
+  mechanism, and a worse grader is a worse channel.
+- **Use a cheaper model for both.** Cheapest, and the most likely to hurt.
+
+At three successful videos a day with a first-attempt hit rate around 50%, the
+realistic figure is **$1-2/day**, not the $0.08/video quoted before any of this
+was measured. Narration adds ~$0.02/video once ElevenLabs is wired in.
+
