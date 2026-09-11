@@ -46,6 +46,15 @@ def make_video(cfg: Any, store: Any) -> int | None:
         # genuinely unusable - an API outage should not burn the whole queue.
         store.note_attempt(topic["id"])
 
+        # Most feeds carry a headline and little else. Fetch the article so the
+        # writer has something specific to work from; without this it correctly
+        # refuses every topic as too thin.
+        topic["summary"] = topics.enrich(topic)
+        print(f"  source: {len(topic['summary'])} chars")
+        if len(topic["summary"]) < topics.MIN_SOURCE_CHARS:
+            print("  ! not enough source material, skipping")
+            continue
+
         try:
             result = script_mod.produce(client, cfg, store, topic)
         except Exception as exc:

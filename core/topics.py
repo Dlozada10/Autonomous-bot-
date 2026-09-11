@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import email.utils
+import re
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -144,6 +145,57 @@ def from_github_trending(language: str) -> list[Candidate]:
             weight=1.0 + min((repo.get("stargazers_count") or 0) / 5000.0, 0.6),
         ))
     return out
+
+
+# A headline alone cannot support a script that names specifics, so the
+# writer refuses it. Many feeds (HuggingFace's especially) carry no summary
+# at all, which is why the article itself has to be fetched.
+MIN_SOURCE_CHARS = 320
+
+_BLOCK_TAGS = re.compile(
+    r"<(script|style|nav|header|footer|aside|form)\b.*?</\1>", re.S | re.I
+)
+_PARAGRAPH = re.compile(r"<p\b[^>]*>(.*?)</p>", re.S | re.I)
+
+
+def article_text(url: str, limit: int = 4000) -> str:
+    """Pull the readable body out of an article page.
+
+    Deliberately crude - paragraph tags only, no HTML parser dependency.
+    Reading <p> contents rather than stripping the whole document is what
+    keeps navigation, cookie banners and footers out of the source material.
+    """
+    if not url:
+        return ""
+    resp = requests.get(url, headers=UA, timeout=TIMEOUT)
+    resp.raise_for_status()
+    if "html" not in resp.headers.get("Content-Type", "").lower():
+        return ""
+
+    html = _BLOCK_TAGS.sub(" ", resp.text)
+    paragraphs = []
+    for raw in _PARAGRAPH.findall(html):
+        text = _strip_tags(raw)
+        # Short fragments are nearly always UI chrome, not prose.
+        if len(text) > 60:
+            paragraphs.append(text)
+        if sum(len(p) for p in paragraphs) > limit:
+            break
+    return " ".join(paragraphs)[:limit]
+
+
+def enrich(topic: dict) -> str:
+    """Return the best source text available for a topic, fetching if needed."""
+    summary = (topic.get("summary") or "").strip()
+    if len(summary) >= MIN_SOURCE_CHARS:
+        return summary
+    try:
+        body = article_text(topic.get("url") or "")
+    except Exception as exc:
+        print(f"  ! could not fetch article: {exc}")
+        return summary
+    # Keep whichever is more substantial.
+    return body if len(body) > len(summary) else summary
 
 
 def gather(cfg: Any) -> list[Candidate]:
