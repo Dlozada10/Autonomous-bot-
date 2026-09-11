@@ -82,6 +82,27 @@ HARD RULES
 NEVER DO THESE
 {forbidden}
 
+THE HOOK
+The first line decides whether the video is watched at all, and it is the single
+weakest thing this channel produces. Rules, in order:
+
+1. Open on the most CONCRETE thing in the source - something a person could
+   picture, or a number attached to a real consequence. If the source contains
+   something visually striking, that is the hook. Do not bury it in beat three.
+2. Never open with a generalisation about people. "Most people...", "Everyone
+   who...", "We all..." - these are the lowest-scoring openers there are. They
+   describe a category, and nobody pictures a category.
+3. Never restate the headline. If your hook is the title with different words,
+   the viewer already scrolled.
+4. Do not open with a bare statistic. A number with no stake attached - "a 350M
+   model", "fourteen points better" - is abstract, not specific. Give the number
+   something to be true ABOUT.
+5. The hook must survive a fact check on its own. Making a line punchier by
+   merging two different projects, people or results is the most common way
+   these scripts become wrong. A hook that is vivid and false is worse than one
+   that is flat and true - it fails harder in review, and it would be worse in
+   public.
+
 THE FAILURE TO AVOID
 The single most common failure is a script that walks through the source in the
 source's own order, using the source's own framing. That is a readback, not a
