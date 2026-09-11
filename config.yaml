@@ -20,6 +20,9 @@ channel:
     - "Engagement bait ('comment X and I'll send you...')"
     - "Financial, legal, or medical advice"
     - "Naming a price or limit without it appearing in the source"
+    - "Attaching a named company, product or person to a failure, breach or
+       fault that the source does not attribute to them"
+    - "Sharpening a hedge into a claim - 'may partly reflect' is not 'is'"
 
 # ============================================================
 #  Video format

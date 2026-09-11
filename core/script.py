@@ -106,15 +106,24 @@ weakest thing this channel produces. Rules, in order:
    carry TENSION, not just information. "X sits in front of 46 providers" is a
    fact. "Your agent retries the whole turn when a provider dies - this one
    doesn't" is a fact with a stake. State the problem the viewer has felt.
-3. Never open with a generalisation about people. "Most people...", "Everyone
+3. THE TENSION MUST ALREADY BE IN THE SOURCE. Find the conflict the author
+   themselves describes - the thing that broke, the tradeoff they admit, the
+   result that surprised them - and lead with that. You may not manufacture
+   stakes the source does not contain. In practice that means: do not sharpen a
+   hedge into a claim ("may partly reflect" is not "is"), do not invent the
+   specifics of an example the source only gestures at, and never attach a named
+   company, product or person to a failure the source does not attribute to
+   them. A flat true hook scores far better than a gripping false one, because
+   the false one fails review and would be worse in public.
+4. Never open with a generalisation about people. "Most people...", "Everyone
    who...", "We all..." - these are the lowest-scoring openers there are. They
    describe a category, and nobody pictures a category.
-4. Never restate the headline. If your hook is the title with different words,
+5. Never restate the headline. If your hook is the title with different words,
    the viewer already scrolled.
-5. Do not open with a bare statistic. A number with no stake attached - "a 350M
+6. Do not open with a bare statistic. A number with no stake attached - "a 350M
    model", "fourteen points better" - is abstract, not specific. Give the number
    something to be true ABOUT.
-6. The hook must survive a fact check on its own. Making a line punchier by
+7. The hook must survive a fact check on its own. Making a line punchier by
    merging two different projects, people or results is the most common way
    these scripts become wrong. A hook that is vivid and false is worse than one
    that is flat and true - it fails harder in review, and it would be worse in
