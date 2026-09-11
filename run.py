@@ -12,6 +12,7 @@
   python run.py auth youtube        one-time YouTube OAuth consent
   python run.py demo                render a sample video with no API keys
   python run.py status              what the channel has made and posted
+  python run.py scripts             print every generated script, for review
 """
 from __future__ import annotations
 
@@ -205,6 +206,49 @@ def cmd_auth(target: str) -> int:
     return 0
 
 
+def cmd_scripts() -> int:
+    """Dump every generated script in readable form.
+
+    This is the calibration view: read the scripts, decide whether the
+    grader's scores match your own judgement, then tune quality.floors.
+    """
+    import json
+
+    cfg, store = _open()
+    rows = store.conn.execute(
+        "SELECT * FROM videos ORDER BY created_at ASC"
+    ).fetchall()
+    if not rows:
+        print("nothing generated yet - run: python run.py make")
+        store.close()
+        return 1
+
+    labels = {f["id"]: f["label"] for f in (cfg.get("formats.variants") or [])}
+    for i, row in enumerate(rows, 1):
+        script = json.loads(row["script"])
+        beats = [script["hook"], *script["beats"], script["payoff"]]
+        words = sum(len(b["voiceover"].split()) for b in beats)
+
+        print("=" * 72)
+        print(f"{i}. {script['title']}")
+        print(f"   {labels.get(row['format_id'], row['format_id'])} | "
+              f"score {row['score'] or 0:.0f} | {words} words | "
+              f"{row['duration'] or 0:.1f}s")
+        print("-" * 72)
+        for beat in beats:
+            print(f"   [{beat['caption']}]")
+            print(f"   {beat['voiceover']}")
+        print()
+        print(f"   tags: {' '.join(script.get('hashtags') or [])}")
+        print()
+
+    print("=" * 72)
+    print(f"{len(rows)} scripts. Read them, then ask: does the score match "
+          f"what you think of it?")
+    store.close()
+    return 0
+
+
 def cmd_demo() -> int:
     """Render a sample with no API keys, to prove the video path works."""
     from core.script import Beat, Script
@@ -249,7 +293,7 @@ COMMANDS = {
     "doctor": cmd_doctor, "discover": cmd_discover, "make": cmd_make,
     "publish": cmd_publish, "once": cmd_once, "daemon": cmd_daemon,
     "status": cmd_status, "demo": cmd_demo, "metrics": cmd_metrics,
-    "report": cmd_report,
+    "report": cmd_report, "scripts": cmd_scripts,
 }
 
 
