@@ -305,6 +305,7 @@ def cmd_demo() -> int:
     cfg.data["voice"]["provider"] = "silent"
 
     script = Script(
+        format_id="mistake",
         title="The agent framework nobody needed",
         hook=Beat(voiceover="Most AI agent frameworks solve a problem you do not have.",
                   caption="You Don't Need It", b_roll="server racks"),

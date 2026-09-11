@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from core.config import Config
-from core.script import Beat, Grade, Script, pick_format, passes
+from core.script import Beat, Grade, Script, eligible_formats, pick_format, passes
 from core.state import Store
 from core.voice import pick_voice
 
@@ -146,6 +146,23 @@ class TestRotation(unittest.TestCase):
                                  format_id="teardown", voice_id=voice["id"],
                                  title="t", script={})
 
+    def test_eligible_formats_excludes_the_cooldown_window(self):
+        cooldown = int(self.cfg.get("formats.cooldown"))
+        used = []
+        for _ in range(cooldown):
+            fmt = eligible_formats(self.cfg, self.store)[0]
+            self._record(fmt["id"])
+            used.append(fmt["id"])
+        offered = {f["id"] for f in eligible_formats(self.cfg, self.store)}
+        self.assertFalse(offered & set(used), "a cooling format was still offered")
+
+    def test_eligible_formats_never_returns_empty(self):
+        # More cooldown slots than variants: the writer still needs a choice.
+        self.cfg.data["formats"]["cooldown"] = 99
+        for variant in self.cfg.get("formats.variants"):
+            self._record(variant["id"])
+        self.assertTrue(eligible_formats(self.cfg, self.store))
+
     def test_voice_selection_handles_an_empty_pool(self):
         self.cfg.data["voice"]["pool"] = []
         self.assertIn("id", pick_voice(self.cfg, self.store))
@@ -165,6 +182,7 @@ class TestRenderSmoke(unittest.TestCase):
         cfg.data["voice"]["provider"] = "silent"
 
         script = Script(
+            format_id="teardown",
             title="t",
             hook=Beat(voiceover="Short hook line here.", caption="Hook", b_roll="x"),
             beats=[Beat(voiceover="One body beat only.", caption="Body", b_roll="y")],
@@ -201,6 +219,7 @@ class TestRenderSmoke(unittest.TestCase):
         ceiling = float(cfg.get("video.max_seconds"))
 
         script = Script(
+            format_id="teardown",
             title="t",
             hook=Beat(voiceover="word " * 70, caption="A", b_roll="x"),
             beats=[Beat(voiceover="word " * 70, caption="B", b_roll="y")],
@@ -229,6 +248,7 @@ class TestRenderSmoke(unittest.TestCase):
         cfg = Config()
         cfg.data["voice"]["provider"] = "silent"
         script = Script(
+            format_id="teardown",
             title="t",
             hook=Beat(voiceover="Short hook line.", caption="A", b_roll="x"),
             beats=[Beat(voiceover="One body beat.", caption="B", b_roll="y")],
@@ -266,6 +286,7 @@ class TestRenderSmoke(unittest.TestCase):
         cfg = Config()
         cfg.data["voice"]["provider"] = "silent"
         script = Script(
+            format_id="teardown",
             title="t",
             hook=Beat(voiceover="Captions must appear on the screen here.",
                       caption="Hook", b_roll="x"),

@@ -29,6 +29,7 @@ class Beat(BaseModel):
 
 
 class Script(BaseModel):
+    format_id: str = Field(description="The id of the structure you chose from the list offered. Pick the one the source can actually support.")
     title: str = Field(description="YouTube Shorts title, under 70 characters. Specific and concrete. No clickbait punctuation, no all-caps words.")
     hook: Beat = Field(description="The first 3 seconds. Must name something specific and create a real question in the viewer's mind.")
     beats: list[Beat] = Field(description="The body of the video, in order.")
@@ -58,19 +59,28 @@ class Grade(BaseModel):
 # --------------------------------------------------------------------
 #  Prompting
 # --------------------------------------------------------------------
-def _system(cfg: Any, fmt: dict) -> str:
+def _system(cfg: Any, eligible: list[dict]) -> str:
     forbidden = "\n".join(f"- {item}" for item in cfg.get("channel.forbidden", []))
     seconds = cfg.get("video.target_seconds", 38)
     # ~2.6 words/second at a natural short-form delivery pace.
     budget = int(seconds * 2.6)
+    structures = _describe(eligible)
     return f"""You write scripts for {cfg.get('channel.name')}, a short-form vertical video channel about {cfg.get('channel.niche')}.
 
 AUDIENCE
 {cfg.get('channel.audience')}
 
-FORMAT FOR THIS VIDEO: {fmt['label']}
-{fmt['structure']}
-Write exactly {fmt['beats']} body beats, plus the hook and the payoff.
+CHOOSE THE STRUCTURE
+Pick whichever of these the source can actually support, and return its id in
+format_id. Choosing badly is itself a failure: a research finding forced into a
+how-to becomes invented steps, and a tool announcement forced into a comparison
+invents a rival. If none fits well, pick the least bad and lean on its spirit
+rather than its letter.
+
+{structures}
+
+Write exactly the number of body beats listed for the structure you pick, plus
+the hook and the payoff.
 
 HARD RULES
 - Total spoken words across every beat: {budget - 15} to {budget + 15}. This is a hard budget; the video is cut to length otherwise.
@@ -121,6 +131,13 @@ of setup instructions read aloud is the single lowest-performing thing you can
 make. Name the tool. Name what it replaces. Name the tradeoff."""
 
 
+def _describe(eligible: list[dict]) -> str:
+    return "\n\n".join(
+        f"  id: {f['id']}\n  {f['label']} - {f['beats']} body beats\n  {f['structure']}"
+        for f in eligible
+    )
+
+
 def _source_block(topic: dict) -> str:
     return f"""SOURCE MATERIAL
 Headline: {topic['title']}
@@ -129,16 +146,26 @@ URL: {topic.get('url') or 'n/a'}
 Summary: {topic.get('summary') or '(no summary text was available beyond the headline)'}"""
 
 
-def pick_format(cfg: Any, store: Any) -> dict:
-    """Choose a format that hasn't been used inside the cooldown window."""
+def eligible_formats(cfg: Any, store: Any) -> list[dict]:
+    """Formats not used inside the cooldown window.
+
+    Rotation exists to stop the channel looking mass-produced, but picking at
+    random from it ignored whether the format suited the topic at all - a
+    research finding drawn as a how-to forces the writer to invent steps.
+    The cooldown still constrains the choice; the writer makes it.
+    """
     variants = cfg.get("formats.variants", [])
     cooldown = int(cfg.get("formats.cooldown", 4))
     recent = set(store.recent_values("format_id", cooldown))
-    eligible = [v for v in variants if v["id"] not in recent] or variants
-    return random.choice(eligible)
+    return [v for v in variants if v["id"] not in recent] or variants
 
 
-def write(client: anthropic.Anthropic, cfg: Any, topic: dict, fmt: dict,
+def pick_format(cfg: Any, store: Any) -> dict:
+    """Kept for callers that want a single format without asking the model."""
+    return random.choice(eligible_formats(cfg, store))
+
+
+def write(client: anthropic.Anthropic, cfg: Any, topic: dict, eligible: list[dict],
           feedback: str = "") -> Script | None:
     """Generate one script. Returns None if the model declined or bailed."""
     user = _source_block(topic)
@@ -154,7 +181,7 @@ def write(client: anthropic.Anthropic, cfg: Any, topic: dict, fmt: dict,
     resp = client.messages.parse(
         model=MODEL,
         max_tokens=8000,
-        system=_system(cfg, fmt),
+        system=_system(cfg, eligible),
         messages=[{"role": "user", "content": user}],
         output_format=Script,
         thinking={"type": "adaptive"},
@@ -225,14 +252,16 @@ def passes(cfg: Any, g: Grade) -> tuple[bool, str]:
 def produce(client: anthropic.Anthropic, cfg: Any, store: Any,
             topic: dict) -> tuple[Script, dict, float] | None:
     """Write -> grade -> retry loop. Returns (script, format, score) or None."""
-    fmt = pick_format(cfg, store)
-    print(f"  format: {fmt['label']}")
+    eligible = eligible_formats(cfg, store)
+    by_id = {f["id"]: f for f in eligible}
     feedback = ""
 
     for attempt in range(int(cfg.get("quality.max_retries", 2)) + 1):
-        script = write(client, cfg, topic, fmt, feedback)
+        script = write(client, cfg, topic, eligible, feedback)
         if script is None:
             return None
+        fmt = by_id.get(script.format_id) or eligible[0]
+        print(f"  format chosen: {fmt['label']}")
 
         words = script.word_count()
         g = grade(client, cfg, topic, script)
