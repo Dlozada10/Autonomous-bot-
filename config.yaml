@@ -121,7 +121,10 @@ quality:
   # reject anything the floors do not already catch. This is what stops a
   # script that scrapes past every floor without being good at anything.
   min_score: 76
-  max_retries: 2            # regenerate this many times before skipping the topic
+  # Each retry is another write+grade pair at roughly $0.14, and a topic that
+  # fails twice rarely succeeds on a third pass. 1 retry = 2 attempts per topic,
+  # which roughly halves the cost of a run that rejects everything.
+  max_retries: 1
   # Any single dimension below its floor fails the script outright,
   # regardless of the total score.
   floors:

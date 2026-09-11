@@ -226,8 +226,8 @@ one to write, one to grade - and both think, so output tokens dominate.
 | | cost |
 |---|---|
 | One attempt (write + grade) | ~$0.14 |
-| One topic (up to 3 attempts) | ~$0.43 |
-| **One `make` run that fails all 3 topics** | **~$1.30** |
+| One topic (up to 2 attempts) | ~$0.28 |
+| **One `make` run that fails all 3 topics** | **~$0.85** |
 | One `make` run that succeeds on the first attempt | ~$0.15 |
 
 **Failed runs are the expensive case, and they produce nothing.** A run that
@@ -237,8 +237,9 @@ quality one: floors set too high burn credit generating work you throw away.
 
 Ways to cut it, in order of how much quality they cost you:
 
-- **Lower `quality.max_retries`.** Two retries costs three attempts per topic.
-  Dropping to one nearly halves the worst case.
+- **`quality.max_retries` is set to 1** (two attempts per topic), down from 2.
+  A topic that fails twice rarely succeeds on a third pass, so the third
+  attempt was mostly buying rejected drafts.
 - **Use a cheaper model for the grader.** Set `GRADER_MODEL` in `core/script.py`
   to `claude-sonnet-5`, which is roughly 40% of Opus pricing on output. The
   grader is doing classification against explicit criteria, which is a cheaper
