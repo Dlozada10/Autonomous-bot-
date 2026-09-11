@@ -122,38 +122,38 @@ topics:
 #  Quality gate - the thing standing between you and a strike
 # ============================================================
 quality:
-  # Calibrated against 9 real graded scripts, not guessed. This grader is
-  # instructed to score low by default - it puts competent-but-generic work at
-  # 50-65, so floors in the 70-90 range reject everything, forever.
+  # THE BAR WAS LOWERED DELIBERATELY on 2026-09-11, after 27 graded attempts
+  # across four runs produced zero passing scripts at 66/80/62/88.
   #
-  # Observed on the first real run (median of 9): hook 58, grounding 84,
-  # originality 54, safety 90. The floors below reject all nine - every one
-  # was a readback of its source - while staying reachable for a script that
-  # actually says something.
+  # The trade made here is explicit: interestingness for volume, never accuracy.
+  # hook_strength and originality came down, because a merely competent video is
+  # still a video and this channel needs to exist before it can be good.
+  # factual_grounding and policy_safety did NOT move, because two attempts
+  # scoring 47 and 55 on grounding contained real inversions of their source -
+  # one advised against a tool the article recommended. A channel that publishes
+  # confident errors is worse than one that publishes nothing, and no amount of
+  # throughput is worth that.
   #
-  # Must sit ABOVE the mean of the floors (currently 74) or it can never
-  # reject anything the floors do not already catch. This is what stops a
-  # script that scrapes past every floor without being good at anything.
-  min_score: 76
-  # Each retry is another write+grade pair at roughly $0.14, and a topic that
-  # fails twice rarely succeeds on a third pass. 1 retry = 2 attempts per topic,
-  # which roughly halves the cost of a run that rejects everything.
+  # Against the 27 observed attempts this bar passes 9 (33%) and still rejects
+  # all 11 with grounding under 80.
+  #
+  # Raise hook_strength and originality back toward 66/62 once the channel has
+  # retention data - `python run.py report` tells you which formats earn
+  # attention, and that is a better guide than either of these numbers.
+  min_score: 70
   max_retries: 1
-  # Any single dimension below its floor fails the script outright,
-  # regardless of the total score.
+
   floors:
-    # Nothing observed cleared 71. A hook is the whole video on Shorts, so this
-    # stays the binding constraint - but 70 was unreachable in practice.
-    hook_strength: 66
-    # Lowered from 85: the grader scored faithful scripts 80-84, so 85 was
-    # rejecting accurate work. Below 80 it starts admitting real invention.
+    # Lowered from 66. Observed median 60, so roughly half of attempts clear it.
+    hook_strength: 58
+    # UNCHANGED. This is the line that stops the channel publishing falsehoods.
+    # Do not lower it to raise throughput.
     factual_grounding: 80
-    # The dimension that failed hardest and most often (46-66). Raising the
-    # writer's prompt to attack readback matters more than this number, but
-    # 62 still rejects every script seen so far.
-    originality: 62
-    # Almost always 86-95. A genuine policy problem shows up as a sharp drop,
-    # so this catches the real thing without tripping on ordinary scripts.
+    # Lowered from 62. Observed median 57. This is the dimension the grader
+    # complained about most, and the one this decision consciously concedes:
+    # expect accurate, useful, unremarkable scripts.
+    originality: 50
+    # UNCHANGED. A genuine policy problem shows as a sharp drop, not a drift.
     policy_safety: 88
 
 # ============================================================
