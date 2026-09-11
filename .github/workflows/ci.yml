@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Mondays 06:00 UTC - catches tests that rotted without anyone pushing.
+    - cron: "0 6 * * 1"
+
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      # The render tests burn captions in and then measure their brightness,
+      # so the font has to be present or the check is measuring a fallback.
+      # ffmpeg itself is vendored through imageio-ffmpeg, not apt.
+      - name: Install caption font
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-dejavu-core
+          fc-match "DejaVu Sans:bold"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Confirm ffmpeg is available
+        run: |
+          python -c "from core.ffmpeg import FFMPEG; print(FFMPEG)"
+          python -c "
+          import subprocess
+          from core.ffmpeg import FFMPEG
+          out = subprocess.run([FFMPEG, '-hide_banner', '-filters'],
+                               capture_output=True, text=True).stdout
+          for f in ('gradients', 'subtitles', 'signalstats'):
+              assert f' {f} ' in out, f'missing ffmpeg filter: {f}'
+          print('required filters present')
+          "
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -t . -v
+
+  mutation:
+    name: Mutation testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Expensive - it re-runs the whole suite once per mutant. Not worth it on
+    # every pull request, but it is the only thing that catches a test going
+    # toothless, so it runs on main and weekly.
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install caption font
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-dejavu-core
+          fc-match "DejaVu Sans:bold"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Fails the build if any mutant survives - a survivor means the code was
+      # broken and no test complained.
+      - name: Break the code and check the tests notice
+        run: python tests/mutate.py

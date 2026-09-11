@@ -1,5 +1,7 @@
 # Faceless channel pipeline
 
+[![CI](https://github.com/Dlozada10/Autonomous-bot-/actions/workflows/ci.yml/badge.svg)](https://github.com/Dlozada10/Autonomous-bot-/actions/workflows/ci.yml)
+
 Autonomous short-form video: discovers a topic, writes a script, grades it,
 narrates it, renders a 1080x1920 MP4, and publishes to YouTube Shorts, TikTok,
 and Instagram Reels on a schedule.
@@ -106,6 +108,20 @@ a missing test, not a curiosity. It has found six real holes so far, including a
 happened to normalise to the same sequence anyway, a test that imported
 `RenderError` and never asserted it, and three unpinned comparison boundaries.
 All 28 mutants are killed as of the current commit.
+
+## CI
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+- **Test suite** — installs from `requirements.txt`, pulls in the DejaVu font the
+  caption test measures against, asserts the ffmpeg filters the render path
+  needs are present, then runs all 92 tests.
+- **Mutation testing** — runs on `main` and weekly, not on pull requests, since
+  it re-runs the whole suite once per mutant. A surviving mutant fails the
+  build: it means the code was broken and no test complained.
+
+ffmpeg is vendored through `imageio-ffmpeg`, so no system install is needed on
+the runner or anywhere else.
 
 ## How it works
 
