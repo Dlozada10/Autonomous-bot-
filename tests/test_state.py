@@ -106,6 +106,74 @@ class TestDedupe(StoreCase):
         )
 
 
+class TestTopicLifecycle(StoreCase):
+    """A topic is retired when it produces a video, or after enough failures.
+
+    The original code marked a topic used before even trying it, so a run
+    that failed for an unrelated reason - an API outage, say - consumed the
+    entire pool and left nothing to retry.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.tid = self.store.add_topic("Anthropic ships a memory tool", "u", "s", "")
+
+    def test_a_fresh_topic_is_offered(self):
+        self.assertEqual(len(self.store.unused_topics()), 1)
+
+    def test_one_failure_does_not_retire_a_topic(self):
+        self.store.note_attempt(self.tid)
+        self.assertEqual(len(self.store.unused_topics()), 1)
+
+    def test_repeated_failure_retires_a_topic(self):
+        self.store.note_attempt(self.tid)
+        self.store.note_attempt(self.tid)
+        self.assertEqual(len(self.store.unused_topics()), 0)
+
+    def test_attempt_limit_is_configurable(self):
+        self.store.note_attempt(self.tid)
+        self.store.note_attempt(self.tid)
+        self.assertEqual(len(self.store.unused_topics(max_attempts=5)), 1)
+
+    def test_release_returns_failed_topics_to_the_pool(self):
+        self.store.note_attempt(self.tid)
+        self.store.note_attempt(self.tid)
+        self.assertEqual(self.store.release_topics(), 1)
+        self.assertEqual(len(self.store.unused_topics()), 1)
+
+    def test_release_does_not_resurrect_a_topic_that_made_a_video(self):
+        self.store.add_video(slug="v1", topic_id=self.tid, format_id="teardown",
+                             voice_id="v", title="t", script={})
+        self.store.mark_topic_used(self.tid)
+        self.store.release_topics()
+        self.assertEqual(len(self.store.unused_topics()), 0)
+
+    def test_migration_adds_attempts_to_an_older_database(self):
+        import sqlite3
+        import time
+        from pathlib import Path as P
+
+        from core.state import Store
+
+        old = P(self.tmp.name) / "old.db"
+        conn = sqlite3.connect(old)
+        conn.executescript(
+            "CREATE TABLE topics (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            " fingerprint TEXT UNIQUE NOT NULL, title TEXT NOT NULL, url TEXT,"
+            " source TEXT, summary TEXT, seen_at REAL NOT NULL, used_at REAL);"
+        )
+        conn.execute("INSERT INTO topics (fingerprint,title,seen_at) VALUES ('fp','t',?)",
+                     (time.time(),))
+        conn.commit()
+        conn.close()
+
+        migrated = Store(old)
+        columns = {r["name"] for r in migrated.conn.execute("PRAGMA table_info(topics)")}
+        self.assertIn("attempts", columns)
+        self.assertEqual(len(migrated.unused_topics()), 1)
+        migrated.close()
+
+
 class TestRotation(StoreCase):
     def _video(self, slug, fmt, voice):
         return self.store.add_video(

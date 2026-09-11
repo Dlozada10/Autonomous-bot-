@@ -16,6 +16,11 @@ from .publish import PUBLISHERS
 from .render import RenderError, render
 
 
+# One run must not be able to drain the whole pool. If three topics in a row
+# fail, something systemic is wrong and burning 25 more will not fix it.
+MAX_TOPICS_PER_RUN = 3
+
+
 def _slug(text: str) -> str:
     base = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:48]
     return f"{time.strftime('%Y%m%d-%H%M%S')}-{base or 'video'}"
@@ -33,14 +38,21 @@ def make_video(cfg: Any, store: Any) -> int | None:
         print("no topics available")
         return None
 
-    for row in pool:
+    for row in pool[:MAX_TOPICS_PER_RUN]:
         topic = dict(row)
         print(f"\ntopic: {topic['title'][:76]}")
-        # Consume the topic whether or not it works out, so a bad one can't
-        # jam the queue on every subsequent run.
-        store.mark_topic_used(topic["id"])
+        # Count the attempt rather than consuming the topic. A topic is only
+        # retired once it has produced a video, or failed enough times to look
+        # genuinely unusable - an API outage should not burn the whole queue.
+        store.note_attempt(topic["id"])
 
-        result = script_mod.produce(client, cfg, store, topic)
+        try:
+            result = script_mod.produce(client, cfg, store, topic)
+        except Exception as exc:
+            # Previously this propagated and killed the run with a traceback,
+            # or was lost entirely. Say what went wrong and move on.
+            print(f"  ! generation failed: {type(exc).__name__}: {exc}")
+            continue
         if result is None:
             continue
         script, fmt, score = result
@@ -64,6 +76,7 @@ def make_video(cfg: Any, store: Any) -> int | None:
         finally:
             shutil.rmtree(work, ignore_errors=True)
 
+        store.mark_topic_used(topic["id"])
         video_id = store.add_video(
             slug=slug, topic_id=topic["id"], format_id=fmt["id"],
             voice_id=chosen["id"], title=script.title,
@@ -73,7 +86,9 @@ def make_video(cfg: Any, store: Any) -> int | None:
         print(f"  rendered {path.name} ({duration:.1f}s, score {score:.0f})")
         return video_id
 
-    print("no topic produced a usable video this run")
+    print(f"no topic produced a usable video this run "
+          f"(tried {min(len(pool), MAX_TOPICS_PER_RUN)}). "
+          f"Run `python run.py check` if this keeps happening.")
     return None
 
 

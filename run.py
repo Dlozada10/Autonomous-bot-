@@ -13,6 +13,8 @@
   python run.py demo                render a sample video with no API keys
   python run.py status              what the channel has made and posted
   python run.py scripts             print every generated script, for review
+  python run.py check               verify the Claude API key actually works
+  python run.py reset               return unused topics to the pool
 """
 from __future__ import annotations
 
@@ -206,6 +208,50 @@ def cmd_auth(target: str) -> int:
     return 0
 
 
+def cmd_check() -> int:
+    """Smallest possible real call, so key problems surface here and not
+    three layers deep inside a generation run."""
+    import anthropic
+
+    cfg, store = _open()
+    store.close()
+    try:
+        key = cfg.require("ANTHROPIC_API_KEY")
+    except RuntimeError as exc:
+        print(f"[XX] {exc}")
+        return 1
+
+    print(f"key: ...{key[-6:]}  (calling the API)")
+    try:
+        client = anthropic.Anthropic(api_key=key)
+        resp = client.messages.create(
+            model="claude-opus-5",
+            max_tokens=16,
+            messages=[{"role": "user", "content": "Reply with the word: ready"}],
+        )
+        text = " ".join(b.text for b in resp.content if b.type == "text").strip()
+        print(f"[ok] API responded: {text!r}")
+        print(f"     tokens in/out: {resp.usage.input_tokens}/{resp.usage.output_tokens}")
+        return 0
+    except Exception as exc:
+        print(f"[XX] {type(exc).__name__}: {exc}")
+        print("\nCommon causes:")
+        print("  - no credit on the account (Console -> Plans & Billing)")
+        print("  - key copied with a stray space or newline")
+        print("  - key revoked, or from a different organisation")
+        return 1
+
+
+def cmd_reset() -> int:
+    """Unblock a pool that was drained by failed runs."""
+    cfg, store = _open()
+    freed = store.release_topics()
+    available = len(store.unused_topics(500))
+    print(f"released {freed} topics; {available} now available")
+    store.close()
+    return 0
+
+
 def cmd_scripts() -> int:
     """Dump every generated script in readable form.
 
@@ -293,7 +339,8 @@ COMMANDS = {
     "doctor": cmd_doctor, "discover": cmd_discover, "make": cmd_make,
     "publish": cmd_publish, "once": cmd_once, "daemon": cmd_daemon,
     "status": cmd_status, "demo": cmd_demo, "metrics": cmd_metrics,
-    "report": cmd_report, "scripts": cmd_scripts,
+    "report": cmd_report, "scripts": cmd_scripts, "check": cmd_check,
+    "reset": cmd_reset,
 }
 
 

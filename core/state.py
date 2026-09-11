@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS topics (
     source      TEXT,
     summary     TEXT,
     seen_at     REAL NOT NULL,
-    used_at     REAL                    -- NULL until a video is made from it
+    used_at     REAL,                   -- NULL until a video is MADE from it
+    attempts    INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS videos (
@@ -89,7 +90,23 @@ class Store:
         self.conn = sqlite3.connect(str(path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self) -> None:
+        """Add columns to databases created by an earlier version.
+
+        CREATE TABLE IF NOT EXISTS silently does nothing for an existing
+        table, so new columns have to be added explicitly.
+        """
+        existing = {
+            row["name"]
+            for row in self.conn.execute("PRAGMA table_info(topics)").fetchall()
+        }
+        if "attempts" not in existing:
+            self.conn.execute(
+                "ALTER TABLE topics ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"
+            )
 
     # --- topics ------------------------------------------------------
     def add_topic(self, title: str, url: str, source: str, summary: str) -> int | None:
@@ -124,11 +141,29 @@ class Store:
                 return True
         return False
 
-    def unused_topics(self, limit: int = 50) -> list[sqlite3.Row]:
+    def unused_topics(self, limit: int = 50, max_attempts: int = 2) -> list[sqlite3.Row]:
+        """Topics that have not produced a video and have not been given up on."""
         return self.conn.execute(
-            "SELECT * FROM topics WHERE used_at IS NULL ORDER BY seen_at DESC LIMIT ?",
-            (limit,),
+            "SELECT * FROM topics WHERE used_at IS NULL AND attempts < ?"
+            " ORDER BY seen_at DESC LIMIT ?",
+            (max_attempts, limit),
         ).fetchall()
+
+    def note_attempt(self, topic_id: int) -> None:
+        """Record that we tried this topic. Enough failures retires it."""
+        self.conn.execute(
+            "UPDATE topics SET attempts = attempts + 1 WHERE id = ?", (topic_id,)
+        )
+        self.conn.commit()
+
+    def release_topics(self) -> int:
+        """Put every topic that never produced a video back in the pool."""
+        cur = self.conn.execute(
+            "UPDATE topics SET used_at = NULL, attempts = 0"
+            " WHERE id NOT IN (SELECT topic_id FROM videos WHERE topic_id IS NOT NULL)"
+        )
+        self.conn.commit()
+        return cur.rowcount
 
     def mark_topic_used(self, topic_id: int) -> None:
         self.conn.execute(
